@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Randomized NN Playground — D-DM / CD-DM</title>
+<style>
+:root {
+  --bg: #0f0f1a;
+  --panel: #161625;
+  --panel2: #1c1c30;
+  --accent: #e94560;
+  --accent2: #533483;
+  --blue: #4fc3f7;
+  --red: #ef5350;
+  --green: #4caf50;
+  --orange: #ff9800;
+  --text: #e0e0e0;
+  --text2: #8888aa;
+  --border: #2a2a40;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; overflow: hidden; height: 100vh; }
+.app { display: grid; grid-template-rows: 50px 1fr 200px; grid-template-columns: 230px 1fr 320px; height: 100vh; gap: 1px; }
+.top-bar { grid-column: 1/-1; background: var(--panel); display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--border); z-index: 10; }
+.left-panel { grid-row: 2; background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px; }
+.center-panel { grid-row: 2; display: flex; flex-direction: column; background: var(--bg); }
+.right-panel { grid-row: 2; background: var(--panel); border-left: 1px solid var(--border); padding: 8px; display: flex; flex-direction: column; }
+.bottom-panel { grid-column: 1/-1; background: var(--panel); border-top: 1px solid var(--border); display: flex; gap: 1px; }
+
+/* Top bar */
+.top-bar select, .top-bar input { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; }
+.top-bar select { cursor: pointer; }
+.btn { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+.btn:hover { background: var(--accent2); }
+.btn.active { background: var(--accent); border-color: var(--accent); }
+.btn-play { font-size: 18px; width: 36px; height: 30px; display: flex; align-items: center; justify-content: center; }
+.stat-box { background: var(--panel2); border-radius: 4px; padding: 4px 10px; font-size: 11px; }
+.stat-box .val { font-size: 14px; font-weight: 600; color: var(--blue); }
+.stat-box .lbl { color: var(--text2); }
+.speed-control { display: flex; align-items: center; gap: 4px; }
+.speed-control input[type=range] { width: 80px; accent-color: var(--accent); }
+
+/* Left panel */
+.section-title { font-size: 11px; text-transform: uppercase; color: var(--text2); letter-spacing: 1px; margin: 12px 0 6px; }
+.section-title:first-child { margin-top: 0; }
+.dataset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.dataset-btn { background: var(--panel2); border: 2px solid transparent; border-radius: 6px; cursor: pointer; padding: 4px; text-align: center; transition: border-color 0.2s; }
+.dataset-btn.active { border-color: var(--accent); }
+.dataset-btn canvas { width: 80px; height: 60px; border-radius: 3px; display: block; margin: 0 auto; }
+.dataset-btn span { font-size: 10px; color: var(--text2); display: block; margin-top: 2px; }
+.param-row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0; }
+.param-row label { font-size: 11px; color: var(--text2); }
+.param-row input[type=range] { width: 100px; accent-color: var(--accent); }
+.param-row input[type=number] { width: 60px; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 3px; padding: 2px 4px; font-size: 11px; }
+.param-row .param-val { font-size: 11px; color: var(--blue); min-width: 30px; text-align: right; }
+.category-tabs { display: flex; gap: 2px; margin-bottom: 8px; }
+.cat-tab { flex: 1; padding: 5px 4px; background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 10px; text-align: center; transition: all 0.2s; }
+.cat-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Center */
+.center-panel canvas { display: block; }
+.net-area { flex: 1; position: relative; min-height: 0; }
+.sigmoid-area { height: 160px; border-top: 1px solid var(--border); background: var(--panel); }
+.net-area canvas, .sigmoid-area canvas { width: 100%; height: 100%; }
+
+/* Right */
+.right-panel canvas { width: 100%; flex: 1; border-radius: 4px; }
+.output-title { font-size: 11px; color: var(--text2); text-align: center; margin-bottom: 4px; }
+.output-stats { font-size: 10px; color: var(--text2); text-align: center; margin-top: 4px; }
+
+/* Bottom */
+.bottom-panel > div { flex: 1; padding: 8px; display: flex; flex-direction: column; }
+.bottom-panel canvas { width: 100%; flex: 1; }
+.bottom-title { font-size: 10px; color: var(--text2); text-align: center; margin-bottom: 4px; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 200px 1fr 280px; }
+}
+
+.cddm-info { background: var(--panel2); border-radius: 4px; padding: 6px 8px; margin-top: 8px; font-size: 11px; }
+.cddm-info .theta-val { color: var(--orange); font-weight: 600; }
+.cddm-info .level-val { color: var(--blue); }
+.legend { display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 4px; font-size: 10px; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div style="font-weight:700;font-size:15px;color:var(--accent);margin-right:8px;">NN Playground</div>
+    <select id="methodSelect">
+      <option value="rvfl">RVFL</option>
+      <option value="elm">ELM</option>
+      <option value="ddm">D-DM</option>
+      <option value="cddm" selected>CD-DM</option>
+    </select>
+    <div style="display:flex;gap:2px;">
+      <button class="btn btn-play" id="btnReset" title="Reset">&#x23EE;</button>
+      <button class="btn btn-play" id="btnPlay" title="Play">&#x25B6;</button>
+      <button class="btn btn-play" id="btnStep" title="Step">&#x23ED;</button>
+    </div>
+    <div class="speed-control">
+      <span style="font-size:10px;color:var(--text2)">Szybko&#x15B;&#x107;:</span>
+      <input type="range" id="speedSlider" min="0" max="100" value="70">
+    </div>
+    <div class="stat-box"><span class="lbl">W&#x119;z&#x142;y: </span><span class="val" id="nodeCount">0</span><span id="nodeMax"></span></div>
+    <div class="stat-box"><span class="lbl">Kandydaci: </span><span class="val" id="candidateCount">0</span></div>
+    <div class="stat-box"><span class="lbl">RMSE: </span><span class="val" id="rmseVal">—</span></div>
+    <div class="stat-box" id="thetaBox" style="display:none"><span class="lbl">&#x3b8;: </span><span class="val" id="thetaVal">—</span></div>
+  </div>
+
+  <!-- LEFT PANEL -->
+  <div class="left-panel">
+    <div class="section-title">Typ zadania</div>
+    <div class="category-tabs">
+      <div class="cat-tab active" data-cat="cls2d">Klasyfikacja 2D</div>
+      <div class="cat-tab" data-cat="reg1d">Regresja 1D</div>
+      <div class="cat-tab" data-cat="reg2d">Regresja 2D</div>
+    </div>
+
+    <div class="section-title">Zbi&#xf3;r danych</div>
+    <div class="dataset-grid" id="datasetGrid"></div>
+
+    <div class="section-title">Dane</div>
+    <div class="param-row">
+      <label>Szum:</label>
+      <input type="range" id="noiseSlider" min="0" max="50" value="5">
+      <span class="param-val" id="noiseVal">0.05</span>
+    </div>
+    <div class="param-row">
+      <label>Train/Test:</label>
+      <input type="range" id="ratioSlider" min="50" max="90" value="75">
+      <span class="param-val" id="ratioVal">75%</span>
+    </div>
+    <div class="param-row">
+      <label>Pr&#xf3;bki:</label>
+      <input type="range" id="samplesSlider" min="100" max="2000" value="500" step="100">
+      <span class="param-val" id="samplesVal">500</span>
+    </div>
+    <button class="btn" id="btnRegenerate" style="width:100%;margin-top:4px;">&#x1f504; Regeneruj dane</button>
+
+    <div class="section-title">Parametry sieci</div>
+    <div class="param-row">
+      <label>W&#x119;z&#x142;y (m):</label>
+      <input type="range" id="mSlider" min="1" max="300" value="50">
+      <span class="param-val" id="mVal">50</span>
+    </div>
+    <div id="ddmParams" style="display:none">
+      <div class="param-row">
+        <label>S&#x105;siedzi (k'):</label>
+        <input type="range" id="kSlider" min="3" max="50" value="10">
+        <span class="param-val" id="kVal">10</span>
+      </div>
+    </div>
+    <div id="cddmParams" style="display:none">
+      <div class="param-row">
+        <label>&#x3b8; (pocz.):</label>
+        <input type="number" id="thetaInput" value="-0.01" step="0.001" min="-1" max="0">
+      </div>
+      <div class="param-row">
+        <label>Q:</label>
+        <input type="number" id="qInput" value="50" min="5" max="500">
+      </div>
+      <div class="param-row">
+        <label>q_max:</label>
+        <input type="number" id="qmaxInput" value="1000" min="100" max="10000">
+      </div>
+    </div>
+
+    <div class="cddm-info" id="cddmInfo" style="display:none">
+      <div>Poziom &#x3b8;: <span class="level-val" id="levelVal">1</span></div>
+      <div>Bie&#x17c;&#x105;ce &#x3b8;: <span class="theta-val" id="curThetaVal">-0.01</span></div>
+      <div>Odrzucone z rz&#x119;du: <span id="rejCount">0</span></div>
+    </div>
+  </div>
+
+  <!-- CENTER PANEL -->
+  <div class="center-panel">
+    <div class="net-area"><canvas id="netCanvas"></canvas></div>
+    <div class="sigmoid-area">
+      <div style="font-size:10px;color:var(--text2);text-align:center;padding:2px;">Sigmoidy w&#x119;z&#x142;&#xf3;w ukrytych</div>
+      <canvas id="sigCanvas"></canvas>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+    <div class="output-title" id="outputTitle">Wyj&#x15b;cie sieci</div>
+    <canvas id="outCanvas"></canvas>
+    <div class="output-stats" id="outputStats"></div>
+  </div>
+
+  <!-- BOTTOM PANEL -->
+  <div class="bottom-panel">
+    <div>
+      <div class="bottom-title">B&#x142;&#x105;d RMSE vs Liczba w&#x119;z&#x142;&#xf3;w</div>
+      <canvas id="errorCanvas"></canvas>
+    </div>
+    <div>
+      <div class="bottom-title">Proces konstrukcji (CD-DM)</div>
+      <canvas id="processCanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// LINEAR ALGEBRA
+// ============================================================
+const LA = {
+  zeros(r, c) { return Array.from({length:r}, ()=>new Float64Array(c)); },
+  vec(n) { return new Float64Array(n); },
+
+  transpose(A) {
+    const r=A.length, c=A[0].length, T=this.zeros(c,r);
+    for(let i=0;i<r;i++) for(let j=0;j<c;j++) T[j][i]=A[i][j];
+    return T;
+  },
+
+  mmul(A, B) {
+    const r=A.length, c=B[0].length, k=B.length, C=this.zeros(r,c);
+    for(let i=0;i<r;i++) for(let j=0;j<c;j++) { let s=0; for(let p=0;p<k;p++) s+=A[i][p]*B[p][j]; C[i][j]=s; }
+    return C;
+  },
+
+  mvmul(A, v) {
+    const r=A.length, c=A[0].length, res=this.vec(r);
+    for(let i=0;i<r;i++) { let s=0; for(let j=0;j<c;j++) s+=A[i][j]*v[j]; res[i]=s; }
+    return res;
+  },
+
+  // Solve Ax=b via Cholesky (A must be symmetric positive definite)
+  cholSolve(A, b) {
+    const n=A.length, L=this.zeros(n,n);
+    for(let i=0;i<n;i++) {
+      for(let j=0;j<=i;j++) {
+        let s=0;
+        for(let k=0;k<j;k++) s+=L[i][k]*L[j][k];
+        if(i===j) { const v=A[i][i]-s; L[i][j]=v>0?Math.sqrt(v):1e-10; }
+        else L[i][j]=(A[i][j]-s)/L[j][j];
+      }
+    }
+    // Forward sub: Ly=b
+    const y=this.vec(n);
+    for(let i=0;i<n;i++) { let s=b[i]; for(let j=0;j<i;j++) s-=L[i][j]*y[j]; y[i]=s/L[i][i]; }
+    // Back sub: L^T x=y
+    const x=this.vec(n);
+    for(let i=n-1;i>=0;i--) { let s=y[i]; for(let j=i+1;j<n;j++) s-=L[j][i]*x[j]; x[i]=s/L[i][i]; }
+    return x;
+  },
+
+  // Pseudoinverse solve: beta = (H^T H + lambda I)^{-1} H^T Y
+  pinvSolve(H, Y, lambda=1e-8) {
+    const Ht=this.transpose(H);
+    const HtH=this.mmul(Ht, H);
+    const m=HtH.length;
+    for(let i=0;i<m;i++) HtH[i][i]+=lambda;
+    // H^T Y (Y is 1D array)
+    const HtY=this.vec(m);
+    const N=H.length;
+    for(let j=0;j<m;j++) { let s=0; for(let i=0;i<N;i++) s+=H[i][j]*Y[i]; HtY[j]=s; }
+    return this.cholSolve(HtH, HtY);
+  },
+
+  // Fit hyperplane: y = a'_1 x_1 + ... + a'_n x_n + b' to points
+  fitHyperplane(X, Y) {
+    // X: array of n-dim points, Y: array of values
+    const N=X.length, n=X[0].length;
+    // Augmented matrix [X, 1]
+    const A=this.zeros(N, n+1);
+    for(let i=0;i<N;i++) { for(let j=0;j<n;j++) A[i][j]=X[i][j]; A[i][n]=1; }
+    const coeffs=this.pinvSolve(A, Y, 1e-10);
+    return { slopes: Array.from(coeffs.subarray(0,n)), intercept: coeffs[n] };
+  },
+
+  dist(a, b) { let s=0; for(let i=0;i<a.length;i++) { const d=a[i]-b[i]; s+=d*d; } return Math.sqrt(s); },
+
+  knn(point, points, k) {
+    const dists=points.map((p,i)=>({i, d:this.dist(point,p)}));
+    dists.sort((a,b)=>a.d-b.d);
+    return dists.slice(0, k).map(d=>d.i);
+  }
+};
+
+// ============================================================
+// DATASETS
+// ============================================================
+function generateDataset(type, n, noise) {
+  const pts = [];
+  switch(type) {
+    case 'circle': {
+      for(let i=0;i<n;i++) {
+        const x1=Math.random()*2-1, x2=Math.random()*2-1;
+        const r=Math.sqrt(x1*x1+x2*x2);
+        let y = r < 0.5 ? 1 : -1;
+        if(Math.random()<noise) y=-y;
+        pts.push({x:[x1,x2], y});
+      }
+      break;
+    }
+    case 'xor': {
+      for(let i=0;i<n;i++) {
+        const x1=Math.random()*2-1, x2=Math.random()*2-1;
+        let y = (x1*x2>0) ? 1 : -1;
+        if(Math.random()<noise) y=-y;
+        pts.push({x:[x1,x2], y});
+      }
+      break;
+    }
+    case 'spiral': {
+      for(let i=0;i<n;i++) {
+        const cls = i%2===0 ? 1 : -1;
+        const r = (i/n)*0.8 + 0.1;
+        const t = 1.75*r*2*Math.PI + (cls===1?0:Math.PI);
+        const x1 = r*Math.sin(t) + (Math.random()-0.5)*noise*0.5;
+        const x2 = r*Math.cos(t) + (Math.random()-0.5)*noise*0.5;
+        pts.push({x:[x1,x2], y:cls});
+      }
+      break;
+    }
+    case 'clusters': {
+      for(let i=0;i<n;i++) {
+        const cls = i%2===0 ? 1 : -1;
+        const cx = cls*0.4, cy = cls*0.4;
+        const x1 = cx + (Math.random()-0.5)*0.6 + (Math.random()-0.5)*noise*0.3;
+        const x2 = cy + (Math.random()-0.5)*0.6 + (Math.random()-0.5)*noise*0.3;
+        pts.push({x:[x1,x2], y:cls});
+      }
+      break;
+    }
+    case 'reg1d': {
+      // g(x) = 0.2*exp(-(10x-4)^2) + 0.5*exp(-(80x-40)^2) + 0.3*exp(-(80x-20)^2)
+      for(let i=0;i<n;i++) {
+        const x = Math.random();
+        let y = 0.2*Math.exp(-Math.pow(10*x-4,2)) + 0.5*Math.exp(-Math.pow(80*x-40,2)) + 0.3*Math.exp(-Math.pow(80*x-20,2));
+        y += (Math.random()-0.5)*noise*0.5;
+        pts.push({x:[x], y});
+      }
+      // Normalize y to [0,1]
+      let minY=Infinity, maxY=-Infinity;
+      for(const p of pts) { if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; }
+      const rng=maxY-minY||1;
+      for(const p of pts) p.y=(p.y-minY)/rng;
+      break;
+    }
+    case 'reg2d': {
+      // g(x) = sin(20*exp(x1))*x1^2 + sin(20*exp(x2))*x2^2
+      for(let i=0;i<n;i++) {
+        const x1=Math.random(), x2=Math.random();
+        let y = Math.sin(20*Math.exp(x1))*x1*x1 + Math.sin(20*Math.exp(x2))*x2*x2;
+        y += (Math.random()-0.5)*noise*0.5;
+        pts.push({x:[x1,x2], y});
+      }
+      let minY=Infinity, maxY=-Infinity;
+      for(const p of pts) { if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; }
+      const rng2=maxY-minY||1;
+      for(const p of pts) p.y=(p.y-minY)/rng2;
+      break;
+    }
+  }
+  return pts;
+}
+
+function splitData(pts, ratio) {
+  const shuffled=[...pts].sort(()=>Math.random()-0.5);
+  const n=Math.floor(shuffled.length*ratio);
+  return { train: shuffled.slice(0,n), test: shuffled.slice(n) };
+}
+
+// ============================================================
+// NEURAL NETWORK METHODS
+// ============================================================
+
+function sigmoid(z) { return 1/(1+Math.exp(-z)); }
+
+function computeH(nodes, data, directLinks=false) {
+  const N=data.length, m=nodes.length;
+  const nInputs=data[0].x.length;
+  const cols = directLinks ? m+nInputs+1 : m;
+  const H=LA.zeros(N, cols);
+  for(let i=0;i<N;i++) {
+    for(let j=0;j<m;j++) {
+      let z=nodes[j].bias;
+      for(let d=0;d<nInputs;d++) z+=nodes[j].weights[d]*data[i].x[d];
+      H[i][j]=sigmoid(z);
+    }
+    if(directLinks) {
+      for(let d=0;d<nInputs;d++) H[i][m+d]=data[i].x[d];
+      H[i][m+nInputs]=1; // bias
+    }
+  }
+  return H;
+}
+
+function predict(nodes, beta, x, directLinks=false) {
+  let out=0;
+  for(let j=0;j<nodes.length;j++) {
+    let z=nodes[j].bias;
+    for(let d=0;d<x.length;d++) z+=nodes[j].weights[d]*x[d];
+    out+=sigmoid(z)*beta[j];
+  }
+  if(directLinks) {
+    const m=nodes.length;
+    for(let d=0;d<x.length;d++) out+=x[d]*beta[m+d];
+    out+=beta[m+x.length]; // bias
+  }
+  return out;
+}
+
+function computeRMSE(nodes, beta, data, directLinks=false) {
+  let s=0;
+  for(const p of data) { const e=predict(nodes, beta, p.x, directLinks)-p.y; s+=e*e; }
+  return Math.sqrt(s/data.length);
+}
+
+// Generate random node for RVFL/ELM
+function randomNode(nInputs) {
+  const w=new Float64Array(nInputs);
+  for(let i=0;i<nInputs;i++) w[i]=Math.random()*2-1;
+  return { weights:w, bias:Math.random()*2-1 };
+}
+
+// Generate DDM node
+function ddmNode(data, k, nInputs) {
+  const idx=Math.floor(Math.random()*data.length);
+  const xStar=data[idx].x;
+  const neighbors=LA.knn(xStar, data.map(p=>p.x), k+1);
+  const X_nb=neighbors.map(i=>data[i].x);
+  const Y_nb=Float64Array.from(neighbors.map(i=>data[i].y));
+  // Add tiny noise to avoid singular matrix
+  const X_nb2=X_nb.map(x=>x.map(v=>v+(Math.random()-0.5)*1e-10));
+  const hp=LA.fitHyperplane(X_nb2, Y_nb);
+  const weights=new Float64Array(nInputs);
+  for(let j=0;j<nInputs;j++) weights[j]=4*hp.slopes[j];
+  let bias=0;
+  for(let j=0;j<nInputs;j++) bias-=weights[j]*xStar[j];
+  return { weights, bias, xStar: [...xStar], thetaLevel: 0 };
+}
+
+// ============================================================
+// SIMULATION STATE
+// ============================================================
+class Simulation {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.nodes = [];
+    this.beta = null;
+    this.rmseHistory = [];
+    this.candidateHistory = []; // for CD-DM: {accepted, rmse, theta}
+    this.totalCandidates = 0;
+    this.currentRMSE = Infinity;
+    this.finished = false;
+
+    // CD-DM state
+    this.theta = -0.01;
+    this.thetaLevel = 1;
+    this.consecutiveRejects = 0;
+    this.totalRejects = 0;
+  }
+
+  init(method, data, params) {
+    this.reset();
+    this.method = method;
+    this.data = data;
+    this.params = params;
+    this.nInputs = data.train[0].x.length;
+    this.directLinks = (method === 'rvfl');
+    this.theta = params.theta || -0.01;
+
+    // For RVFL/ELM/DDM: pre-generate all nodes
+    if(method !== 'cddm') {
+      this.allNodes = [];
+      for(let i=0;i<params.m;i++) {
+        if(method === 'ddm') {
+          this.allNodes.push(ddmNode(data.train, params.k, this.nInputs));
+        } else {
+          this.allNodes.push(randomNode(this.nInputs));
+        }
+      }
+    }
+  }
+
+  step() {
+    if(this.finished) return null;
+
+    const m = this.params.m;
+    const method = this.method;
+    const train = this.data.train;
+    const Y = Float64Array.from(train.map(p=>p.y));
+
+    if(method === 'cddm') {
+      // CD-DM: generate candidate, accept/reject
+      this.totalCandidates++;
+      const candidate = ddmNode(train, this.params.k, this.nInputs);
+      candidate.thetaLevel = this.thetaLevel;
+
+      // Try adding candidate
+      const tryNodes = [...this.nodes, candidate];
+      const H = computeH(tryNodes, train, false);
+      const tryBeta = LA.pinvSolve(H, Y);
+      const tryRMSE = computeRMSE(tryNodes, tryBeta, train, false);
+
+      const isFirst = this.nodes.length === 0;
+      const deltaRMSE = tryRMSE - this.currentRMSE;
+      const accepted = isFirst || (deltaRMSE <= this.theta);
+
+      if(accepted) {
+        this.nodes.push(candidate);
+        this.beta = tryBeta;
+        this.currentRMSE = tryRMSE;
+        this.consecutiveRejects = 0;
+        this.rmseHistory.push(tryRMSE);
+      } else {
+        this.consecutiveRejects++;
+        this.totalRejects++;
+      }
+
+      this.candidateHistory.push({ accepted, rmse: tryRMSE, theta: this.theta, thetaLevel: this.thetaLevel });
+
+      // Adapt theta
+      if(this.consecutiveRejects >= this.params.Q) {
+        this.theta /= 2;
+        this.thetaLevel++;
+        this.consecutiveRejects = 0;
+      }
+
+      // Stop conditions
+      if(this.nodes.length >= m || this.totalRejects >= this.params.qmax) {
+        this.finished = true;
+      }
+
+      return { accepted, candidate, deltaRMSE, theta: this.theta, thetaLevel: this.thetaLevel };
+
+    } else {
+      // RVFL/ELM/DDM: reveal one node at a time
+      if(this.nodes.length >= this.allNodes.length) { this.finished = true; return null; }
+
+      this.nodes.push(this.allNodes[this.nodes.length]);
+      this.totalCandidates = this.nodes.length;
+      const H = computeH(this.nodes, train, this.directLinks);
+      this.beta = LA.pinvSolve(H, Y);
+      this.currentRMSE = computeRMSE(this.nodes, this.beta, train, this.directLinks);
+      this.rmseHistory.push(this.currentRMSE);
+
+      if(this.nodes.length >= m) this.finished = true;
+
+      return { accepted: true, theta: 0, thetaLevel: 0 };
+    }
+  }
+
+  predictPoint(x) {
+    if(!this.beta || this.nodes.length===0) return 0;
+    return predict(this.nodes, this.beta, x, this.directLinks);
+  }
+
+  getTestRMSE() {
+    if(!this.beta || this.nodes.length===0) return Infinity;
+    return computeRMSE(this.nodes, this.beta, this.data.test, this.directLinks);
+  }
+}
+
+// ============================================================
+// RENDERERS
+// ============================================================
+
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+// --- Network Visualization ---
+function renderNetwork(canvas, sim) {
+  const {ctx, w, h} = setupCanvas(canvas);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, w, h);
+
+  const nodes = sim.nodes;
+  const nInputs = sim.nInputs || 2;
+  const m = nodes.length;
+  if(m === 0) {
+    ctx.fillStyle = '#555';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Kliknij ▶ aby rozpocz\u0105\u0107', w/2, h/2);
+    return;
+  }
+
+  const inputX = 60, outputX = w - 60;
+  const hiddenX = w / 2;
+  const maxVisible = Math.min(m, 30);
+  const inputSpacing = h / (nInputs + 1);
+  const hiddenSpacing = h / (maxVisible + 1);
+
+  // Draw connections input -> hidden
+  for(let j=0;j<maxVisible;j++) {
+    const node = nodes[j];
+    const hy = (j+1)*hiddenSpacing;
+    for(let d=0;d<nInputs;d++) {
+      const iy = (d+1)*inputSpacing;
+      const wt = node.weights[d];
+      const absW = Math.min(Math.abs(wt)*2, 5);
+      ctx.strokeStyle = wt > 0 ? `rgba(79,195,247,${Math.min(Math.abs(wt)*0.3,0.8)})` : `rgba(239,83,80,${Math.min(Math.abs(wt)*0.3,0.8)})`;
+      ctx.lineWidth = absW;
+      ctx.beginPath();
+      ctx.moveTo(inputX+15, iy);
+      ctx.lineTo(hiddenX-15, hy);
+      ctx.stroke();
+    }
+  }
+
+  // Draw connections hidden -> output
+  if(sim.beta) {
+    for(let j=0;j<maxVisible;j++) {
+      const hy = (j+1)*hiddenSpacing;
+      const wt = sim.beta[j];
+      const absW = Math.min(Math.abs(wt)*3, 5);
+      ctx.strokeStyle = wt > 0 ? `rgba(79,195,247,${Math.min(Math.abs(wt)*0.2,0.7)})` : `rgba(239,83,80,${Math.min(Math.abs(wt)*0.2,0.7)})`;
+      ctx.lineWidth = absW;
+      ctx.beginPath();
+      ctx.moveTo(hiddenX+15, hy);
+      ctx.lineTo(outputX-15, h/2);
+      ctx.stroke();
+    }
+  }
+
+  // Direct links (RVFL)
+  if(sim.directLinks && sim.beta) {
+    for(let d=0;d<nInputs;d++) {
+      const iy = (d+1)*inputSpacing;
+      const wt = sim.beta[m+d];
+      ctx.strokeStyle = `rgba(255,152,0,0.4)`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4,4]);
+      ctx.beginPath();
+      ctx.moveTo(inputX+15, iy);
+      ctx.lineTo(outputX-15, h/2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Input nodes
+  for(let d=0;d<nInputs;d++) {
+    const iy = (d+1)*inputSpacing;
+    ctx.fillStyle = '#2a2a50';
+    ctx.strokeStyle = var_blue;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(inputX, iy, 14, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ccc';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`x${d+1}`, inputX, iy+4);
+  }
+
+  // Hidden nodes
+  const thetaColors = ['#e94560','#ff9800','#4caf50','#4fc3f7','#ab47bc','#ffeb3b','#00bcd4','#e91e63','#8bc34a'];
+  for(let j=0;j<maxVisible;j++) {
+    const hy = (j+1)*hiddenSpacing;
+    const node = nodes[j];
+    const tl = node.thetaLevel || 0;
+    const col = sim.method === 'cddm' ? (thetaColors[tl % thetaColors.length]) : '#4fc3f7';
+    ctx.fillStyle = '#1a1a30';
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(hiddenX, hy, 10, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+  }
+  if(m > maxVisible) {
+    ctx.fillStyle = '#888';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`... +${m-maxVisible} wi\u0119cej`, hiddenX, h-10);
+  }
+
+  // Output node
+  ctx.fillStyle = '#2a2a50';
+  ctx.strokeStyle = '#e94560';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(outputX, h/2, 16, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#ccc';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('y', outputX, h/2+4);
+
+  // Labels
+  ctx.fillStyle = '#666';
+  ctx.font = '10px sans-serif';
+  ctx.fillText('Wej\u015bcie', inputX, 16);
+  ctx.fillText(`Ukryta (${m})`, hiddenX, 16);
+  ctx.fillText('Wyj\u015bcie', outputX, 16);
+}
+const var_blue = '#4fc3f7';
+
+// --- Output Visualization ---
+function renderOutput(canvas, sim, category, datasetType) {
+  const {ctx, w, h} = setupCanvas(canvas);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, w, h);
+
+  if(!sim.data) return;
+
+  if(category === 'reg1d') {
+    renderOutput1D(ctx, w, h, sim);
+  } else {
+    renderOutput2D(ctx, w, h, sim, category);
+  }
+}
+
+function renderOutput1D(ctx, w, h, sim) {
+  const pad = 30;
+  const pw = w - 2*pad, ph = h - 2*pad;
+
+  // Axes
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad); ctx.lineTo(pad, h-pad); ctx.lineTo(w-pad, h-pad);
+  ctx.stroke();
+
+  // Training points
+  for(const p of sim.data.train) {
+    const px = pad + p.x[0] * pw;
+    const py = h - pad - p.y * ph;
+    ctx.fillStyle = 'rgba(79,195,247,0.4)';
+    ctx.beginPath();
+    ctx.arc(px, py, 2, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Target function (smooth)
+  if(sim.nodes.length > 0) {
+    // Fitted curve
+    ctx.strokeStyle = '#e94560';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for(let i=0;i<=200;i++) {
+      const x = i/200;
+      const y = sim.predictPoint([x]);
+      const px = pad + x * pw;
+      const py = h - pad - Math.max(0,Math.min(1,y)) * ph;
+      if(i===0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+
+  // True function line (thin)
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  // Compute normalization from data
+  let minY=Infinity, maxY=-Infinity;
+  for(let i=0;i<=200;i++) {
+    const x=i/200;
+    const yRaw=0.2*Math.exp(-Math.pow(10*x-4,2))+0.5*Math.exp(-Math.pow(80*x-40,2))+0.3*Math.exp(-Math.pow(80*x-20,2));
+    if(yRaw<minY) minY=yRaw; if(yRaw>maxY) maxY=yRaw;
+  }
+  const rng=maxY-minY||1;
+  for(let i=0;i<=200;i++) {
+    const x=i/200;
+    const yRaw=0.2*Math.exp(-Math.pow(10*x-4,2))+0.5*Math.exp(-Math.pow(80*x-40,2))+0.3*Math.exp(-Math.pow(80*x-20,2));
+    const y=(yRaw-minY)/rng;
+    const px=pad+x*pw, py=h-pad-y*ph;
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.fillStyle = '#666';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('x', w/2, h-5);
+  ctx.save();
+  ctx.translate(10, h/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText('y', 0, 0);
+  ctx.restore();
+}
+
+function renderOutput2D(ctx, w, h, sim, category) {
+  const pad = 10;
+  const s = Math.min(w, h) - 2*pad;
+  const ox = (w-s)/2, oy = (h-s)/2;
+
+  if(sim.nodes.length > 0 && sim.beta) {
+    // Heatmap
+    const res = 50;
+    const imgData = ctx.createImageData(res, res);
+    const isClassification = category === 'cls2d';
+
+    // Determine input range
+    let minX1=-1.2, maxX1=1.2, minX2=-1.2, maxX2=1.2;
+    if(category === 'reg2d') { minX1=0; maxX1=1; minX2=0; maxX2=1; }
+
+    for(let j=0;j<res;j++) {
+      for(let i=0;i<res;i++) {
+        const x1 = minX1 + (maxX1-minX1)*i/res;
+        const x2 = minX1 + (maxX2-minX2)*(res-1-j)/res;
+        const val = sim.predictPoint([x1, x2]);
+        const idx = (j*res+i)*4;
+
+        if(isClassification) {
+          const conf = Math.min(Math.abs(val)*2, 1);
+          if(val > 0) {
+            imgData.data[idx]=255; imgData.data[idx+1]=Math.floor(152*conf); imgData.data[idx+2]=0;
+          } else {
+            imgData.data[idx]=Math.floor(33*(1-conf)); imgData.data[idx+1]=Math.floor(150*conf); imgData.data[idx+2]=Math.floor(243*conf);
+          }
+          imgData.data[idx+3]=Math.floor(120+conf*100);
+        } else {
+          // Regression: viridis-like
+          const v = Math.max(0, Math.min(1, val));
+          imgData.data[idx]=Math.floor(v*255);
+          imgData.data[idx+1]=Math.floor((1-Math.abs(v-0.5)*2)*200);
+          imgData.data[idx+2]=Math.floor((1-v)*255);
+          imgData.data[idx+3]=200;
+        }
+      }
+    }
+    // Draw scaled
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = res; tmpCanvas.height = res;
+    tmpCanvas.getContext('2d').putImageData(imgData, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(tmpCanvas, ox, oy, s, s);
+  }
+
+  // Data points
+  const isClass = category === 'cls2d';
+  let minX1=-1.2, maxX1=1.2;
+  if(category === 'reg2d') { minX1=0; maxX1=1; }
+
+  const allPts = [...sim.data.train, ...sim.data.test];
+  for(const p of allPts) {
+    const px = ox + (p.x[0]-minX1)/(maxX1-minX1)*s;
+    const py = oy + (1-(p.x[1]-minX1)/(maxX1-minX1))*s;
+    if(isClass) {
+      ctx.fillStyle = p.y > 0 ? '#ff9800' : '#2196f3';
+    } else {
+      const v = Math.max(0, Math.min(1, p.y));
+      ctx.fillStyle = `rgb(${Math.floor(v*255)},${Math.floor((1-Math.abs(v-0.5)*2)*200)},${Math.floor((1-v)*255)})`;
+    }
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.arc(px, py, 3, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+  }
+}
+
+// --- Sigmoid Visualization ---
+function renderSigmoids(canvas, sim) {
+  const {ctx, w, h} = setupCanvas(canvas);
+  ctx.fillStyle = '#161625';
+  ctx.fillRect(0, 0, w, h);
+
+  const nodes = sim.nodes;
+  if(nodes.length === 0 || sim.nInputs !== 1) {
+    if(sim.nInputs !== 1 && nodes.length > 0) {
+      ctx.fillStyle = '#555';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Wizualizacja sigmoid\u00f3w dost\u0119pna tylko dla 1D', w/2, h/2);
+    }
+    return;
+  }
+
+  const pad = 30;
+  const pw = w - 2*pad, ph = h - 2*pad;
+  const thetaColors = ['#e94560','#ff9800','#4caf50','#4fc3f7','#ab47bc','#ffeb3b','#00bcd4','#e91e63','#8bc34a'];
+
+  // Axes
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad); ctx.lineTo(pad, h-pad); ctx.lineTo(w-pad, h-pad);
+  ctx.stroke();
+
+  // Draw each sigmoid
+  for(let j=0;j<nodes.length;j++) {
+    const node = nodes[j];
+    const tl = node.thetaLevel || 0;
+    const col = sim.method === 'cddm' ? thetaColors[tl % thetaColors.length] : `hsl(${(j*37)%360},70%,60%)`;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    for(let i=0;i<=100;i++) {
+      const x = i/100;
+      const z = node.weights[0]*x + node.bias;
+      const y = sigmoid(z);
+      const px = pad + x*pw;
+      const py = h - pad - y*ph;
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Labels
+  ctx.fillStyle = '#666';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('0', pad-12, h-pad+4);
+  ctx.fillText('1', pad-12, pad+4);
+  ctx.textAlign = 'center';
+  ctx.fillText('0', pad, h-pad+12);
+  ctx.fillText('1', w-pad, h-pad+12);
+}
+
+// --- Error Plot ---
+function renderErrorPlot(canvas, sim) {
+  const {ctx, w, h} = setupCanvas(canvas);
+  ctx.fillStyle = '#161625';
+  ctx.fillRect(0, 0, w, h);
+
+  const hist = sim.rmseHistory;
+  if(hist.length < 2) return;
+
+  const pad = {l:45, r:10, t:10, b:25};
+  const pw = w-pad.l-pad.r, ph = h-pad.t-pad.b;
+
+  const maxRMSE = Math.max(...hist)*1.1;
+  const minRMSE = 0;
+
+  // Grid
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 0.5;
+  for(let i=0;i<=4;i++) {
+    const y = pad.t + i*ph/4;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); ctx.stroke();
+  }
+
+  // RMSE line
+  ctx.strokeStyle = '#e94560';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let i=0;i<hist.length;i++) {
+    const x = pad.l + (i/(hist.length-1))*pw;
+    const y = pad.t + (1 - (hist[i]-minRMSE)/(maxRMSE-minRMSE))*ph;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Theta level changes for CD-DM
+  if(sim.method === 'cddm' && sim.candidateHistory.length > 0) {
+    let nodeIdx = 0;
+    let prevLevel = 1;
+    for(let i=0;i<sim.candidateHistory.length;i++) {
+      if(sim.candidateHistory[i].accepted) nodeIdx++;
+      if(sim.candidateHistory[i].thetaLevel !== prevLevel && nodeIdx > 0 && nodeIdx < hist.length) {
+        prevLevel = sim.candidateHistory[i].thetaLevel;
+        const x = pad.l + ((nodeIdx-1)/(hist.length-1))*pw;
+        ctx.strokeStyle = 'rgba(255,152,0,0.4)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, h-pad.b); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ff9800';
+        ctx.font = '8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`\u03b8/${Math.pow(2,prevLevel-1)}`, x, pad.t-2);
+      }
+    }
+  }
+
+  // Axis labels
+  ctx.fillStyle = '#666';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'right';
+  for(let i=0;i<=4;i++) {
+    const v = maxRMSE - i*(maxRMSE-minRMSE)/4;
+    const y = pad.t + i*ph/4;
+    ctx.fillText(v.toFixed(3), pad.l-4, y+3);
+  }
+  ctx.textAlign = 'center';
+  ctx.fillText('W\u0119z\u0142y', w/2, h-2);
+}
+
+// --- Process Canvas (CD-DM accept/reject) ---
+function renderProcess(canvas, sim) {
+  const {ctx, w, h} = setupCanvas(canvas);
+  ctx.fillStyle = '#161625';
+  ctx.fillRect(0, 0, w, h);
+
+  const hist = sim.candidateHistory;
+  if(hist.length === 0) {
+    ctx.fillStyle = '#555';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Proces konstrukcji CD-DM', w/2, h/2);
+    return;
+  }
+
+  const pad = {l:10, r:10, t:15, b:20};
+  const pw = w-pad.l-pad.r, ph = h-pad.t-pad.b;
+  const maxShow = Math.min(hist.length, 500);
+  const start = Math.max(0, hist.length - maxShow);
+  const barW = Math.max(1, pw / maxShow);
+
+  for(let i=start;i<hist.length;i++) {
+    const ci = i - start;
+    const entry = hist[i];
+    const x = pad.l + ci * barW;
+    ctx.fillStyle = entry.accepted ? 'rgba(76,175,80,0.7)' : 'rgba(239,83,80,0.3)';
+    ctx.fillRect(x, entry.accepted ? pad.t : pad.t + ph*0.3, barW-0.5, entry.accepted ? ph : ph*0.7);
+  }
+
+  // Stats
+  const accepted = hist.filter(h=>h.accepted).length;
+  const rejected = hist.length - accepted;
+  ctx.fillStyle = '#aaa';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Zaakceptowane: ${accepted}`, pad.l+5, h-4);
+  ctx.textAlign = 'right';
+  ctx.fillText(`Odrzucone: ${rejected}`, w-pad.r-5, h-4);
+}
+
+// ============================================================
+// APP CONTROLLER
+// ============================================================
+class App {
+  constructor() {
+    this.sim = new Simulation();
+    this.category = 'cls2d';
+    this.datasetType = 'circle';
+    this.running = false;
+    this.animTimer = null;
+
+    this.datasets = {
+      cls2d: [{id:'circle',name:'Ko\u0142o'},{id:'xor',name:'XOR'},{id:'spiral',name:'Spirala'},{id:'clusters',name:'Klastry'}],
+      reg1d: [{id:'reg1d',name:'Funkcja (6)'}],
+      reg2d: [{id:'reg2d',name:'Funkcja (7)'}]
+    };
+
+    this.initUI();
+    this.switchCategory('cls2d');
+    this.regenerateData();
+    this.renderAll();
+  }
+
+  initUI() {
+    // Category tabs
+    document.querySelectorAll('.cat-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        this.switchCategory(tab.dataset.cat);
+      });
+    });
+
+    // Method
+    document.getElementById('methodSelect').addEventListener('change', e => {
+      this.updateParamVisibility();
+      this.resetSim();
+    });
+
+    // Controls
+    document.getElementById('btnReset').addEventListener('click', () => this.resetSim());
+    document.getElementById('btnPlay').addEventListener('click', () => this.togglePlay());
+    document.getElementById('btnStep').addEventListener('click', () => this.stepOnce());
+    document.getElementById('btnRegenerate').addEventListener('click', () => { this.regenerateData(); this.resetSim(); });
+
+    // Sliders
+    const sliderBind = (id, valId, transform) => {
+      const sl = document.getElementById(id);
+      const vl = document.getElementById(valId);
+      sl.addEventListener('input', () => { vl.textContent = transform ? transform(sl.value) : sl.value; });
+    };
+    sliderBind('noiseSlider', 'noiseVal', v => (v/100).toFixed(2));
+    sliderBind('ratioSlider', 'ratioVal', v => v+'%');
+    sliderBind('samplesSlider', 'samplesVal');
+    sliderBind('mSlider', 'mVal');
+    sliderBind('kSlider', 'kVal');
+  }
+
+  switchCategory(cat) {
+    this.category = cat;
+    document.querySelectorAll('.cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat===cat));
+    const ds = this.datasets[cat];
+    this.datasetType = ds[0].id;
+
+    const grid = document.getElementById('datasetGrid');
+    grid.innerHTML = '';
+    for(const d of ds) {
+      const btn = document.createElement('div');
+      btn.className = 'dataset-btn' + (d.id===this.datasetType?' active':'');
+      btn.innerHTML = `<canvas width="80" height="60"></canvas><span>${d.name}</span>`;
+      btn.addEventListener('click', () => {
+        this.datasetType = d.id;
+        grid.querySelectorAll('.dataset-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        this.regenerateData();
+        this.resetSim();
+      });
+      grid.appendChild(btn);
+      // Draw preview
+      this.drawPreview(btn.querySelector('canvas'), d.id);
+    }
+
+    this.regenerateData();
+    this.resetSim();
+  }
+
+  drawPreview(canvas, type) {
+    canvas.width = 80; canvas.height = 60;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, 80, 60);
+    const pts = generateDataset(type, 100, 0.02);
+    const isClass = ['circle','xor','spiral','clusters'].includes(type);
+    for(const p of pts) {
+      let px, py;
+      if(p.x.length === 1) {
+        px = p.x[0]*70+5;
+        py = 55 - p.y*50;
+      } else if(isClass) {
+        px = (p.x[0]+1.2)/2.4*70+5;
+        py = (1-(p.x[1]+1.2)/2.4)*50+5;
+      } else {
+        px = p.x[0]*70+5;
+        py = (1-p.x[1])*50+5;
+      }
+      ctx.fillStyle = isClass ? (p.y>0?'#ff9800':'#2196f3') : `hsl(${p.y*240},80%,50%)`;
+      ctx.beginPath();
+      ctx.arc(px, py, 1.5, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  regenerateData() {
+    const n = parseInt(document.getElementById('samplesSlider').value);
+    const noise = parseInt(document.getElementById('noiseSlider').value)/100;
+    const ratio = parseInt(document.getElementById('ratioSlider').value)/100;
+    const pts = generateDataset(this.datasetType, n, noise);
+    this.data = splitData(pts, ratio);
+  }
+
+  getParams() {
+    return {
+      m: parseInt(document.getElementById('mSlider').value),
+      k: parseInt(document.getElementById('kSlider').value),
+      theta: parseFloat(document.getElementById('thetaInput').value),
+      Q: parseInt(document.getElementById('qInput').value),
+      qmax: parseInt(document.getElementById('qmaxInput').value),
+    };
+  }
+
+  updateParamVisibility() {
+    const method = document.getElementById('methodSelect').value;
+    const isDDM = method === 'ddm' || method === 'cddm';
+    const isCDDM = method === 'cddm';
+    document.getElementById('ddmParams').style.display = isDDM ? 'block' : 'none';
+    document.getElementById('cddmParams').style.display = isCDDM ? 'block' : 'none';
+    document.getElementById('thetaBox').style.display = isCDDM ? '' : 'none';
+    document.getElementById('cddmInfo').style.display = isCDDM ? 'block' : 'none';
+  }
+
+  resetSim() {
+    this.stop();
+    const method = document.getElementById('methodSelect').value;
+    this.sim.init(method, this.data, this.getParams());
+    this.updateParamVisibility();
+    this.updateStats();
+    this.renderAll();
+    document.getElementById('btnPlay').innerHTML = '&#x25B6;';
+  }
+
+  togglePlay() {
+    if(this.running) {
+      this.stop();
+    } else {
+      if(this.sim.finished) this.resetSim();
+      this.play();
+    }
+  }
+
+  play() {
+    this.running = true;
+    document.getElementById('btnPlay').innerHTML = '&#x23F8;';
+    document.getElementById('btnPlay').classList.add('active');
+    this.tick();
+  }
+
+  stop() {
+    this.running = false;
+    if(this.animTimer) { clearTimeout(this.animTimer); this.animTimer = null; }
+    document.getElementById('btnPlay').innerHTML = '&#x25B6;';
+    document.getElementById('btnPlay').classList.remove('active');
+  }
+
+  tick() {
+    if(!this.running || this.sim.finished) { this.stop(); return; }
+
+    // Speed: slider 0-100, map to delay 2000ms - 5ms (log scale)
+    const sv = parseInt(document.getElementById('speedSlider').value);
+    const delay = Math.max(5, Math.floor(2000 * Math.exp(-sv/15)));
+
+    // At high speed, do multiple steps per frame
+    const stepsPerFrame = delay < 20 ? 5 : (delay < 50 ? 3 : 1);
+
+    for(let s=0;s<stepsPerFrame && !this.sim.finished;s++) {
+      this.sim.step();
+    }
+
+    this.updateStats();
+    this.renderAll();
+
+    if(this.sim.finished) { this.stop(); return; }
+    this.animTimer = setTimeout(() => this.tick(), Math.max(delay/stepsPerFrame, 5));
+  }
+
+  stepOnce() {
+    if(this.sim.finished) return;
+    if(this.sim.nodes.length === 0 && !this.sim.allNodes && this.sim.method !== 'cddm') {
+      this.resetSim();
+    }
+    this.sim.step();
+    this.updateStats();
+    this.renderAll();
+  }
+
+  updateStats() {
+    document.getElementById('nodeCount').textContent = this.sim.nodes.length;
+    document.getElementById('nodeMax').textContent = '/' + this.sim.params.m;
+    document.getElementById('candidateCount').textContent = this.sim.totalCandidates;
+    document.getElementById('rmseVal').textContent = this.sim.currentRMSE === Infinity ? '—' : this.sim.currentRMSE.toFixed(4);
+
+    if(this.sim.method === 'cddm') {
+      document.getElementById('thetaVal').textContent = this.sim.theta.toExponential(2);
+      document.getElementById('curThetaVal').textContent = this.sim.theta.toExponential(2);
+      document.getElementById('levelVal').textContent = this.sim.thetaLevel;
+      document.getElementById('rejCount').textContent = this.sim.consecutiveRejects;
+    }
+
+    const testRMSE = this.sim.getTestRMSE();
+    document.getElementById('outputStats').textContent =
+      `Train RMSE: ${this.sim.currentRMSE===Infinity?'—':this.sim.currentRMSE.toFixed(4)} | Test RMSE: ${testRMSE===Infinity?'—':testRMSE.toFixed(4)}`;
+  }
+
+  renderAll() {
+    renderNetwork(document.getElementById('netCanvas'), this.sim);
+    renderOutput(document.getElementById('outCanvas'), this.sim, this.category, this.datasetType);
+    renderSigmoids(document.getElementById('sigCanvas'), this.sim);
+    renderErrorPlot(document.getElementById('errorCanvas'), this.sim);
+    renderProcess(document.getElementById('processCanvas'), this.sim);
+  }
+}
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  window.app = new App();
+
+  // Handle resize
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => window.app.renderAll(), 200);
+  });
+});
+</script>
+</body>
+</html>

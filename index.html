@@ -125,8 +125,8 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', syste
     <div class="stat-box" id="thetaBox" style="display:none"><span class="lbl">&#x3b8;: </span><span class="val" id="thetaVal">—</span></div>
     <div style="flex:1"></div>
     <div id="langSwitch" style="display:flex;gap:4px;align-items:center;cursor:pointer;">
-      <span class="lang-flag" data-lang="en" title="English" style="font-size:20px;opacity:1;filter:grayscale(0);">&#x1F1EC;&#x1F1E7;</span>
-      <span class="lang-flag" data-lang="pl" title="Polski" style="font-size:20px;opacity:0.4;filter:grayscale(1);">&#x1F1F5;&#x1F1F1;</span>
+      <span class="lang-flag" data-lang="en" title="English" style="font-size:12px;cursor:pointer;padding:2px 6px;border-radius:3px;background:var(--accent);color:#fff;font-weight:600;">ENG</span>
+      <span class="lang-flag" data-lang="pl" title="Polski" style="font-size:12px;cursor:pointer;padding:2px 6px;border-radius:3px;background:var(--panel2);color:var(--text2);font-weight:600;">PL</span>
     </div>
   </div>
 
@@ -925,11 +925,23 @@ const optunaTracker = {
     if(this.trials.length < 3) return [];
     const keys = ['m','k','theta','Q'];
     const importances = [];
+    const rankOf = arr => {
+      const sorted=[...arr].map((v,i)=>({v,i})).sort((a,b)=>a.v-b.v);
+      const ranks=new Array(arr.length);
+      sorted.forEach((s,r)=>ranks[s.i]=r);
+      return ranks;
+    };
+    const hasVariance = arr => { const first=arr[0]; return arr.some(v => v !== first); };
+    const rmses = this.trials.map(t => t.rmse);
+    if(!hasVariance(rmses)) return []; // all same RMSE — no info
+
     for(const key of keys) {
       const vals = this.trials.map(t => t.params[key] !== undefined ? t.params[key] : 0);
-      const rmses = this.trials.map(t => t.rmse);
-      // Spearman rank correlation
-      const rankOf = arr => { const sorted=[...arr].map((v,i)=>({v,i})).sort((a,b)=>a.v-b.v); const ranks=new Array(arr.length); sorted.forEach((s,r)=>ranks[s.i]=r); return ranks; };
+      if(!hasVariance(vals)) {
+        // Parameter never changed — zero importance
+        importances.push({ name: key, importance: 0 });
+        continue;
+      }
       const rV = rankOf(vals), rR = rankOf(rmses);
       const n = rV.length;
       let sumD2 = 0;
@@ -937,8 +949,8 @@ const optunaTracker = {
       const rho = 1 - 6*sumD2/(n*(n*n-1));
       importances.push({ name: key, importance: Math.abs(rho) });
     }
-    const total = importances.reduce((s,v) => s+v.importance, 0) || 1;
-    importances.forEach(v => v.importance /= total);
+    const total = importances.reduce((s,v) => s+v.importance, 0);
+    if(total > 0) importances.forEach(v => v.importance /= total);
     importances.sort((a,b) => b.importance - a.importance);
     return importances;
   }
@@ -954,7 +966,17 @@ function renderParamImportances(canvas) {
     ctx.fillStyle = '#555';
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(I18N.t('needTrials'), w/2, h/2);
+    const msg = optunaTracker.trials.length < 3 ? I18N.t('needTrials') : I18N.t('varyParams');
+    ctx.fillText(msg, w/2, h/2);
+    return;
+  }
+
+  // If all importances are 0 (no param varied), show hint
+  if(imps.every(v => v.importance === 0)) {
+    ctx.fillStyle = '#555';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(I18N.t('varyParams'), w/2, h/2);
     return;
   }
 
@@ -1401,6 +1423,7 @@ const I18N = {
       outputTitle: 'Network Output', rmseChart: 'RMSE Error vs Nodes',
       processChart: 'Construction Process (CD-DM)', paramImport: 'Parameter Importance',
       optHistory: 'Optimization History', needTrials: 'Run training 3+ times to see results',
+      varyParams: 'Vary parameters (m, k) between runs',
       circle: 'Circle', xor: 'XOR', spiral: 'Spiral', clusters: 'Clusters',
       func6: 'Function (6)', func7: 'Function (7)',
       inputLabel: 'Input', hiddenLabel: 'Hidden', outputLabel: 'Output',
@@ -1415,6 +1438,7 @@ const I18N = {
       outputTitle: 'Wyj\u015bcie sieci', rmseChart: 'B\u0142\u0105d RMSE vs Liczba w\u0119z\u0142\u00f3w',
       processChart: 'Proces konstrukcji (CD-DM)', paramImport: 'Istotno\u015b\u0107 parametr\u00f3w',
       optHistory: 'Historia optymalizacji', needTrials: 'Uruchom trening 3+ razy',
+      varyParams: 'Zmieniaj parametry (m, k) mi\u0119dzy uruchomieniami',
       circle: 'Ko\u0142o', xor: 'XOR', spiral: 'Spirala', clusters: 'Klastry',
       func6: 'Funkcja (6)', func7: 'Funkcja (7)',
       inputLabel: 'Wej\u015bcie', hiddenLabel: 'Ukryta', outputLabel: 'Wyj\u015bcie',
@@ -1426,8 +1450,8 @@ const I18N = {
     // Update flags
     document.querySelectorAll('.lang-flag').forEach(f => {
       const isActive = f.dataset.lang === lang;
-      f.style.opacity = isActive ? '1' : '0.4';
-      f.style.filter = isActive ? 'grayscale(0)' : 'grayscale(1)';
+      f.style.background = isActive ? 'var(--accent)' : 'var(--panel2)';
+      f.style.color = isActive ? '#fff' : 'var(--text2)';
     });
     // Update all data-i18n elements
     document.querySelectorAll('[data-i18n]').forEach(el => {

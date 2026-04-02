@@ -961,44 +961,78 @@ function renderParamImportances(canvas) {
   ctx.fillStyle = '#161625';
   ctx.fillRect(0, 0, w, h);
 
-  const imps = optunaTracker.getImportances();
-  if(imps.length === 0) {
+  const trials = optunaTracker.trials;
+  if(trials.length === 0) {
     ctx.fillStyle = '#555';
     ctx.font = '11px sans-serif';
     ctx.textAlign = 'center';
-    const msg = optunaTracker.trials.length < 3 ? I18N.t('needTrials') : I18N.t('varyParams');
-    ctx.fillText(msg, w/2, h/2);
+    ctx.fillText(I18N.t('needTrials'), w/2, h/2);
     return;
   }
 
-  // If all importances are 0 (no param varied), show hint
-  if(imps.every(v => v.importance === 0)) {
-    ctx.fillStyle = '#555';
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(I18N.t('varyParams'), w/2, h/2);
-    return;
-  }
-
-  const pad = {l:50, r:10, t:8, b:8};
-  const barH = Math.min(20, (h-pad.t-pad.b)/imps.length - 4);
-  const maxW = w - pad.l - pad.r;
-
+  const pad = {l:8, r:8, t:6, b:6};
+  const pw = w - pad.l - pad.r;
+  const keys = ['m','k','theta','Q'];
+  const labels = {m:'m', k:"k'", theta:'\u03b8', Q:'Q'};
   const colors = ['#4fc3f7','#e94560','#ff9800','#4caf50'];
-  for(let i=0;i<imps.length;i++) {
-    const y = pad.t + i*(barH+4);
-    const bw = imps[i].importance * maxW;
-    ctx.fillStyle = colors[i % colors.length];
-    ctx.globalAlpha = 0.8;
-    ctx.fillRect(pad.l, y, bw, barH);
-    ctx.globalAlpha = 1;
-    // Label
+
+  // Compute stats per parameter
+  const imps = optunaTracker.getImportances();
+  const impMap = {};
+  imps.forEach(v => impMap[v.name] = v.importance);
+
+  const anyVaried = imps.some(v => v.importance > 0);
+  const bestTrial = trials.reduce((b,t) => t.rmse < b.rmse ? t : b, trials[0]);
+
+  // Header: trials count + best RMSE
+  ctx.fillStyle = '#888';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Trials: ${trials.length}  |  Best RMSE: ${bestTrial.rmse.toFixed(4)}`, pad.l, pad.t + 8);
+
+  const rowH = Math.min(18, (h - pad.t - pad.b - 16) / keys.length - 3);
+  const startY = pad.t + 16;
+  const barLeft = pad.l + 30;
+  const barMaxW = pw - 30 - 50; // space for label left + value right
+
+  for(let i=0;i<keys.length;i++) {
+    const key = keys[i];
+    const y = startY + i * (rowH + 3);
+    const imp = impMap[key] || 0;
+    const vals = trials.map(t => t.params[key] !== undefined ? t.params[key] : 0);
+    const hasVar = vals.some(v => v !== vals[0]);
+    const minV = Math.min(...vals), maxV = Math.max(...vals);
+
+    // Param label
     ctx.fillStyle = '#ccc';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(imps[i].name, pad.l-4, y+barH/2+4);
-    ctx.textAlign = 'left';
-    ctx.fillText((imps[i].importance*100).toFixed(0)+'%', pad.l+bw+4, y+barH/2+4);
+    ctx.fillText(labels[key], barLeft - 6, y + rowH/2 + 4);
+
+    if(hasVar && anyVaried) {
+      // Draw importance bar
+      const bw = Math.max(2, imp * barMaxW);
+      ctx.fillStyle = colors[i];
+      ctx.globalAlpha = 0.8;
+      ctx.fillRect(barLeft, y, bw, rowH);
+      ctx.globalAlpha = 1;
+      // Percentage + range
+      ctx.fillStyle = '#ccc';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'left';
+      const pct = (imp*100).toFixed(0) + '%';
+      const range = key === 'theta' ? `[${maxV}, ${minV}]` : `[${minV}, ${maxV}]`;
+      ctx.fillText(`${pct}  ${range}`, barLeft + bw + 4, y + rowH/2 + 4);
+    } else {
+      // No variance — show current value, dimmed
+      ctx.fillStyle = '#444';
+      ctx.fillRect(barLeft, y, barMaxW * 0.15, rowH);
+      ctx.fillStyle = '#777';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'left';
+      const valStr = key === 'theta' ? vals[0].toExponential(1) : String(vals[0]);
+      ctx.fillText(`= ${valStr}  (${I18N.t('noVariance')})`, barLeft + barMaxW * 0.15 + 4, y + rowH/2 + 4);
+    }
   }
 }
 
@@ -1424,6 +1458,7 @@ const I18N = {
       processChart: 'Construction Process (CD-DM)', paramImport: 'Parameter Importance',
       optHistory: 'Optimization History', needTrials: 'Run training 3+ times to see results',
       varyParams: 'Vary parameters (m, k) between runs',
+      noVariance: 'not varied',
       circle: 'Circle', xor: 'XOR', spiral: 'Spiral', clusters: 'Clusters',
       func6: 'Function (6)', func7: 'Function (7)',
       inputLabel: 'Input', hiddenLabel: 'Hidden', outputLabel: 'Output',
@@ -1439,6 +1474,7 @@ const I18N = {
       processChart: 'Proces konstrukcji (CD-DM)', paramImport: 'Istotno\u015b\u0107 parametr\u00f3w',
       optHistory: 'Historia optymalizacji', needTrials: 'Uruchom trening 3+ razy',
       varyParams: 'Zmieniaj parametry (m, k) mi\u0119dzy uruchomieniami',
+      noVariance: 'bez zmian',
       circle: 'Ko\u0142o', xor: 'XOR', spiral: 'Spirala', clusters: 'Klastry',
       func6: 'Funkcja (6)', func7: 'Funkcja (7)',
       inputLabel: 'Wej\u015bcie', hiddenLabel: 'Ukryta', outputLabel: 'Wyj\u015bcie',

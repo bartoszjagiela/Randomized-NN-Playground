@@ -188,6 +188,14 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', syste
       </div>
     </div>
 
+    <button class="btn" id="btnOptimize" style="width:100%;margin-top:6px;background:#533483;border-color:#7c4dff;" data-i18n="optimize">&#x1F50D; Optimize (sweep)</button>
+    <div id="optimizeProgress" style="display:none;margin-top:4px;font-size:10px;color:var(--text2);">
+      <div style="background:var(--panel2);border-radius:3px;height:6px;overflow:hidden;margin-bottom:2px;">
+        <div id="optimizeBar" style="height:100%;background:var(--accent);width:0%;transition:width 0.3s;"></div>
+      </div>
+      <span id="optimizeStatus"></span>
+    </div>
+
     <div class="cddm-info" id="cddmInfo" style="display:none">
       <div><span data-i18n="thetaLevel">Theta level:</span> <span class="level-val" id="levelVal">1</span></div>
       <div><span data-i18n="currentTheta">Current &#x3b8;:</span> <span class="theta-val" id="curThetaVal">-0.01</span></div>
@@ -962,38 +970,72 @@ function renderParamImportances(canvas) {
   ctx.fillRect(0, 0, w, h);
 
   const trials = optunaTracker.trials;
-  if(trials.length === 0) {
-    ctx.fillStyle = '#555';
-    ctx.font = '11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(I18N.t('needTrials'), w/2, h/2);
-    return;
-  }
-
   const pad = {l:8, r:8, t:6, b:6};
   const pw = w - pad.l - pad.r;
   const keys = ['m','k','theta','Q'];
   const labels = {m:'m', k:"k'", theta:'\u03b8', Q:'Q'};
   const colors = ['#4fc3f7','#e94560','#ff9800','#4caf50'];
 
-  // Compute stats per parameter
+  // If no trials at all, show current params from UI
+  if(trials.length === 0) {
+    const app = window.app;
+    if(!app) return;
+    const params = app.getParams();
+    ctx.fillStyle = '#888';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(I18N.t('currentParams'), pad.l, pad.t + 10);
+
+    const rowH = Math.min(16, (h - pad.t - pad.b - 18) / keys.length - 3);
+    const startY = pad.t + 18;
+    for(let i=0;i<keys.length;i++) {
+      const key = keys[i];
+      const y = startY + i * (rowH + 3);
+      const val = params[key];
+      const valStr = key === 'theta' ? val.toExponential(1) : String(val);
+      // Label
+      ctx.fillStyle = '#ccc';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(labels[key], pad.l + 28, y + rowH/2 + 4);
+      // Value bar (placeholder proportional to normalized value)
+      const maxVals = {m:300, k:50, theta:1, Q:500};
+      const norm = Math.min(1, Math.abs(val) / maxVals[key]);
+      const barLeft = pad.l + 34;
+      const barMaxW = pw - 40 - 60;
+      ctx.fillStyle = colors[i];
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(barLeft, y, norm * barMaxW, rowH);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#aaa';
+      ctx.textAlign = 'left';
+      ctx.fillText(`= ${valStr}`, barLeft + norm * barMaxW + 4, y + rowH/2 + 4);
+    }
+    // Hint
+    ctx.fillStyle = '#555';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(I18N.t('runToCompare'), w/2, h - pad.b - 2);
+    return;
+  }
+
+  // Has trials — compute importances
   const imps = optunaTracker.getImportances();
   const impMap = {};
   imps.forEach(v => impMap[v.name] = v.importance);
-
-  const anyVaried = imps.some(v => v.importance > 0);
+  const anyVaried = imps.length > 0 && imps.some(v => v.importance > 0);
   const bestTrial = trials.reduce((b,t) => t.rmse < b.rmse ? t : b, trials[0]);
 
-  // Header: trials count + best RMSE
+  // Header
   ctx.fillStyle = '#888';
   ctx.font = '9px sans-serif';
   ctx.textAlign = 'left';
   ctx.fillText(`Trials: ${trials.length}  |  Best RMSE: ${bestTrial.rmse.toFixed(4)}`, pad.l, pad.t + 8);
 
-  const rowH = Math.min(18, (h - pad.t - pad.b - 16) / keys.length - 3);
-  const startY = pad.t + 16;
-  const barLeft = pad.l + 30;
-  const barMaxW = pw - 30 - 50; // space for label left + value right
+  const rowH = Math.min(16, (h - pad.t - pad.b - 18) / keys.length - 3);
+  const startY = pad.t + 18;
+  const barLeft = pad.l + 28;
+  const barMaxW = pw - 34 - 60;
 
   for(let i=0;i<keys.length;i++) {
     const key = keys[i];
@@ -1010,13 +1052,11 @@ function renderParamImportances(canvas) {
     ctx.fillText(labels[key], barLeft - 6, y + rowH/2 + 4);
 
     if(hasVar && anyVaried) {
-      // Draw importance bar
       const bw = Math.max(2, imp * barMaxW);
       ctx.fillStyle = colors[i];
       ctx.globalAlpha = 0.8;
       ctx.fillRect(barLeft, y, bw, rowH);
       ctx.globalAlpha = 1;
-      // Percentage + range
       ctx.fillStyle = '#ccc';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'left';
@@ -1024,15 +1064,27 @@ function renderParamImportances(canvas) {
       const range = key === 'theta' ? `[${maxV}, ${minV}]` : `[${minV}, ${maxV}]`;
       ctx.fillText(`${pct}  ${range}`, barLeft + bw + 4, y + rowH/2 + 4);
     } else {
-      // No variance — show current value, dimmed
-      ctx.fillStyle = '#444';
-      ctx.fillRect(barLeft, y, barMaxW * 0.15, rowH);
+      // Show value + small placeholder bar
+      const valStr = key === 'theta' ? vals[0].toExponential(1) : String(vals[0]);
+      ctx.fillStyle = colors[i];
+      ctx.globalAlpha = 0.15;
+      const maxVals = {m:300, k:50, theta:1, Q:500};
+      const norm = Math.min(1, Math.abs(vals[0]) / maxVals[key]);
+      ctx.fillRect(barLeft, y, norm * barMaxW, rowH);
+      ctx.globalAlpha = 1;
       ctx.fillStyle = '#777';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'left';
-      const valStr = key === 'theta' ? vals[0].toExponential(1) : String(vals[0]);
-      ctx.fillText(`= ${valStr}  (${I18N.t('noVariance')})`, barLeft + barMaxW * 0.15 + 4, y + rowH/2 + 4);
+      ctx.fillText(`= ${valStr}`, barLeft + norm * barMaxW + 4, y + rowH/2 + 4);
     }
+  }
+
+  // Hint if no param varied
+  if(!anyVaried) {
+    ctx.fillStyle = '#555';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(I18N.t('varyParams'), w/2, h - pad.b - 2);
   }
 }
 
@@ -1246,6 +1298,7 @@ class App {
     document.getElementById('btnPlay').addEventListener('click', () => this.togglePlay());
     document.getElementById('btnStep').addEventListener('click', () => this.stepOnce());
     document.getElementById('btnRegenerate').addEventListener('click', () => { this.regenerateData(); this.resetSim(); });
+    document.getElementById('btnOptimize').addEventListener('click', () => this.runOptimize());
 
     // Sliders
     const sliderBind = (id, valId, transform) => {
@@ -1431,6 +1484,98 @@ class App {
       `Train RMSE: ${this.sim.currentRMSE===Infinity?'—':this.sim.currentRMSE.toFixed(4)} | Test RMSE: ${testRMSE===Infinity?'—':testRMSE.toFixed(4)}`;
   }
 
+  async runOptimize() {
+    if(this.optimizing) return;
+    this.stop();
+    this.optimizing = true;
+
+    const btn = document.getElementById('btnOptimize');
+    const prog = document.getElementById('optimizeProgress');
+    const bar = document.getElementById('optimizeBar');
+    const status = document.getElementById('optimizeStatus');
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    prog.style.display = 'block';
+
+    optunaTracker.clear();
+
+    const method = document.getElementById('methodSelect').value;
+    const baseParams = this.getParams();
+    const isDDM = method === 'ddm' || method === 'cddm';
+
+    // Define search grid
+    const mValues = [20, 50, 100, 150, 200];
+    const kValues = isDDM ? [5, 10, 20, 35, 50] : [10];
+    const grid = [];
+    for(const m of mValues) {
+      for(const k of kValues) {
+        grid.push({...baseParams, m, k});
+      }
+    }
+
+    const total = grid.length;
+    let best = {rmse: Infinity, params: null};
+
+    for(let i=0;i<total;i++) {
+      const params = grid[i];
+      // Update UI sliders to reflect current trial
+      document.getElementById('mSlider').value = params.m;
+      document.getElementById('mVal').textContent = params.m;
+      if(isDDM) {
+        document.getElementById('kSlider').value = params.k;
+        document.getElementById('kVal').textContent = params.k;
+      }
+
+      // Run full training synchronously
+      this.sim.init(method, this.data, params);
+      while(!this.sim.finished) {
+        this.sim.step();
+      }
+
+      const testRMSE = this.sim.getTestRMSE();
+      const rmse = testRMSE < Infinity ? testRMSE : this.sim.currentRMSE;
+      optunaTracker.addTrial(params, rmse, method);
+
+      if(rmse < best.rmse) {
+        best = {rmse, params: {...params}};
+      }
+
+      // Update progress
+      const pct = ((i+1)/total*100).toFixed(0);
+      bar.style.width = pct + '%';
+      status.textContent = `${I18N.t('optimizing')} ${i+1}/${total}  (m=${params.m}, k'=${params.k})  RMSE: ${rmse.toFixed(4)}`;
+
+      // Render charts
+      renderParamImportances(document.getElementById('paramImportCanvas'));
+      renderOptHistory(document.getElementById('optHistoryCanvas'));
+
+      // Yield to UI
+      await new Promise(r => setTimeout(r, 10));
+    }
+
+    // Set best params in UI
+    if(best.params) {
+      document.getElementById('mSlider').value = best.params.m;
+      document.getElementById('mVal').textContent = best.params.m;
+      if(isDDM) {
+        document.getElementById('kSlider').value = best.params.k;
+        document.getElementById('kVal').textContent = best.params.k;
+      }
+      // Run with best params to show result
+      this.sim.init(method, this.data, best.params);
+      while(!this.sim.finished) this.sim.step();
+      this.updateStats();
+    }
+
+    status.textContent = `${I18N.t('optimizeDone')} m=${best.params.m}, k'=${best.params.k}, RMSE=${best.rmse.toFixed(4)}`;
+    bar.style.width = '100%';
+    bar.style.background = 'var(--green)';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    this.optimizing = false;
+    this.renderAll();
+  }
+
   renderAll() {
     renderNetwork(document.getElementById('netCanvas'), this.sim);
     renderOutput(document.getElementById('outCanvas'), this.sim, this.category, this.datasetType);
@@ -1459,6 +1604,11 @@ const I18N = {
       optHistory: 'Optimization History', needTrials: 'Run training 3+ times to see results',
       varyParams: 'Vary parameters (m, k) between runs',
       noVariance: 'not varied',
+      currentParams: 'Current parameters:',
+      runToCompare: 'Run training to start tracking',
+      optimize: '&#x1F50D; Optimize (sweep)',
+      optimizing: 'Optimizing',
+      optimizeDone: 'Done! Best:',
       circle: 'Circle', xor: 'XOR', spiral: 'Spiral', clusters: 'Clusters',
       func6: 'Function (6)', func7: 'Function (7)',
       inputLabel: 'Input', hiddenLabel: 'Hidden', outputLabel: 'Output',
@@ -1475,6 +1625,11 @@ const I18N = {
       optHistory: 'Historia optymalizacji', needTrials: 'Uruchom trening 3+ razy',
       varyParams: 'Zmieniaj parametry (m, k) mi\u0119dzy uruchomieniami',
       noVariance: 'bez zmian',
+      currentParams: 'Aktualne parametry:',
+      runToCompare: 'Uruchom trening aby \u015bledzi\u0107',
+      optimize: '&#x1F50D; Optymalizuj (sweep)',
+      optimizing: 'Optymalizacja',
+      optimizeDone: 'Gotowe! Najlepszy:',
       circle: 'Ko\u0142o', xor: 'XOR', spiral: 'Spirala', clusters: 'Klastry',
       func6: 'Funkcja (6)', func7: 'Funkcja (7)',
       inputLabel: 'Wej\u015bcie', hiddenLabel: 'Ukryta', outputLabel: 'Wyj\u015bcie',
